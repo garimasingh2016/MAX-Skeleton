@@ -27,5 +27,5 @@ API_DESC = 'An API for serving models'
 API_VERSION = '0.1'
 
 # default model
-MODEL_NAME = ''
-DEFAULT_MODEL_PATH = 'assets/{}'.format(MODEL_NAME)
+MODEL_NAME = 'bertqa'
+DEFAULT_MODEL_PATH = 'assets/{}.pb'.format(MODEL_NAME)

@@ -18,6 +18,7 @@ from maxfw.model import MAXModelWrapper
 
 import logging
 from config import DEFAULT_MODEL_PATH
+import run_squad
 
 logger = logging.getLogger()
 
@@ -36,9 +37,21 @@ class ModelWrapper(MAXModelWrapper):
     def __init__(self, path=DEFAULT_MODEL_PATH):
         logger.info('Loading model from: {}...'.format(path))
 
-        # Load the graph
+        # Parameters for inference
+        self.max_seq_length = 384
+        self.doc_stride = 128
+        self.max_query_length = 64
 
-        # Set up instance variables and required inputs for inference
+        # Loading the tf Graph
+        self.graph = tf.Graph()
+        self.sess = tf.Session(graph=self.graph)
+        tf.saved_model.loader.load(self.sess, [tag_constants.SERVING], DEFAULT_MODEL_PATH)
+
+        # Initialize the dataprocessor
+        self.processor = MAXAPIProcessor()
+
+        # Initialize the tokenizer
+        self.tokenizer = tokenization.FullTokenizer(vocab_file='vocab.txt', do_lower_case=True)
 
         logger.info('Loaded model')
 
@@ -48,5 +61,37 @@ class ModelWrapper(MAXModelWrapper):
     def _post_process(self, result):
         return result
 
-    def _predict(self, x):
-        return x
+    def _predict(self, x, batch_size=32):
+        predict_examples = read_squad_examples(x)
+
+        # Input and output tensors
+        input_ids = self.sess.graph.get_tensor_by_name('input_ids_1:0')
+        input_mask = self.sess.graph.get_tensor_by_name('input_mask_1:0')
+        unique_ids = self.sess.graph.get_tensor_by_name('unique_ids_1:0')
+        segment_ids = self.sess.graph.get_tensor_by_name('segment_ids_1:0')
+        outputs = self.sess.graph.get_tensor_by_name('loss/Softmax:0')
+
+        predictions = []
+
+        for i in range(0, len(predict_examples), batch_size):
+            features = convert_examples_to_features(predict_examples[i:i+batch_size], self.tokenizer, self.max_seq_length, self.doc_stride, self.max_query_length)
+            
+            feed_dict = {}
+            feed_dict[input_ids] = []
+            feed_dict[input_mask] = []
+            feed_dict[unique_ids] = []
+            feed_dict[segment_ids] = []
+            for feature in features:
+                feed_dict[input_ids].append(feature.input_ids)
+                feed_dict[input_mask].append(feature.input_mask)
+                feed_dict[label_ids].append(feature.label_ids)
+                feed_dict[unique_ids].append(features.unique_ids)
+
+            result = self.sess.run(outputs, feed_dict=feed_dict)
+
+            predictions.append(list(p) for p in result)
+            
+        return predictions
+
+
+

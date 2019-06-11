@@ -18,7 +18,7 @@ from maxfw.model import MAXModelWrapper
 
 import logging
 from config import DEFAULT_MODEL_PATH
-from core.run_squad import MAXAPIProcessor
+from core.run_squad import MAXAPIProcessor, read_squad_examples, convert_examples_to_features
 from core.tokenization import FullTokenizer
 import tensorflow as tf
 from tensorflow.python.saved_model import tag_constants

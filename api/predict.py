@@ -18,14 +18,20 @@ from core.model import ModelWrapper
 from maxfw.core import MAX_API, PredictAPI
 from flask_restplus import fields
 from werkzeug.datastructures import FileStorage
+import tensorflow as tf
+import json
 
-# Set up parser for input data (http://flask-restplus.readthedocs.io/en/stable/parsing.html)
+
+# Set up parser for input data
+# (http://flask-restplus.readthedocs.io/en/stable/parsing.html)
 input_parser = MAX_API.parser()
 # Example parser for file input
-input_parser.add_argument('file', type=FileStorage, location='files', required=True)
+input_parser.add_argument('file', type=FileStorage,
+                          location='files', required=True)
 
 
-# Creating a JSON response model: https://flask-restplus.readthedocs.io/en/stable/marshalling.html#the-api-model-factory
+# Creating a JSON response model:
+# https://flask-restplus.readthedocs.io/en/stable/marshalling.html#the-api-model-factory
 label_prediction = MAX_API.model('LabelPrediction', {
     'label_id': fields.String(required=False, description='Label identifier'),
     'label': fields.String(required=True, description='Class label'),
@@ -50,11 +56,13 @@ class ModelPredictAPI(PredictAPI):
         result = {'status': 'error'}
 
         args = input_parser.parse_args()
-        input_data = args['file'].read()
+        input_data = json.load(args['file'])["data"]
+        # input_data = input_file.read()
         preds = self.model_wrapper.predict(input_data)
 
         # Modify this code if the schema is changed
-        label_preds = [{'label_id': p[0], 'label': p[1], 'probability': p[2]} for p in [x for x in preds]]
+        label_preds = [{'label_id': p[0], 'label': p[1],
+                        'probability': p[2]} for p in [x for x in preds]]
         result['predictions'] = label_preds
         result['status'] = 'ok'
 

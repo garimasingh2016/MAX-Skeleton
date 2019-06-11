@@ -19,13 +19,12 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
-import json
 import math
 import os
 import random
 # import modeling
 # import optimization
-from core.tokenization import *
+from core.tokenization import FullTokenizer
 import six
 import tensorflow as tf
 
@@ -163,11 +162,8 @@ class MAXAPIProcessor(DataProcessor):
         return examples
 
 
-def read_squad_examples(input_file):
-    """Read a SQuAD json file into a list of SquadExample."""
-    with tf.gfile.Open(input_file, "r") as reader:
-        input_data = json.load(reader)["data"]
-
+def read_squad_examples(input_data):
+    """Read data from a SQuAD json file into a list of SquadExample."""
     def is_whitespace(c):
         if c == " " or c == "\t" or c == "\r" or c == "\n" or ord(c) == 0x202F:
             return True

@@ -18,7 +18,10 @@ from maxfw.model import MAXModelWrapper
 
 import logging
 from config import DEFAULT_MODEL_PATH
-import run_squad
+from core.run_squad import MAXAPIProcessor
+from core.tokenization import FullTokenizer
+import tensorflow as tf
+from tensorflow.python.saved_model import tag_constants
 
 logger = logging.getLogger()
 
@@ -45,13 +48,15 @@ class ModelWrapper(MAXModelWrapper):
         # Loading the tf Graph
         self.graph = tf.Graph()
         self.sess = tf.Session(graph=self.graph)
-        tf.saved_model.loader.load(self.sess, [tag_constants.SERVING], DEFAULT_MODEL_PATH)
+        tf.saved_model.loader.load(
+            self.sess, [tag_constants.SERVING], DEFAULT_MODEL_PATH)
 
         # Initialize the dataprocessor
         self.processor = MAXAPIProcessor()
 
         # Initialize the tokenizer
-        self.tokenizer = tokenization.FullTokenizer(vocab_file='vocab.txt', do_lower_case=True)
+        self.tokenizer = FullTokenizer(
+            vocab_file='core/vocab.txt', do_lower_case=True)
 
         logger.info('Loaded model')
 
@@ -74,8 +79,9 @@ class ModelWrapper(MAXModelWrapper):
         predictions = []
 
         for i in range(0, len(predict_examples), batch_size):
-            features = convert_examples_to_features(predict_examples[i:i+batch_size], self.tokenizer, self.max_seq_length, self.doc_stride, self.max_query_length)
-            
+            features = convert_examples_to_features(predict_examples[
+                                                    i:i + batch_size], self.tokenizer, self.max_seq_length, self.doc_stride, self.max_query_length)
+
             feed_dict = {}
             feed_dict[input_ids] = []
             feed_dict[input_mask] = []
@@ -90,8 +96,5 @@ class ModelWrapper(MAXModelWrapper):
             result = self.sess.run(outputs, feed_dict=feed_dict)
 
             predictions.append(list(p) for p in result)
-            
+
         return predictions
-
-
-

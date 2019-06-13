@@ -34,6 +34,7 @@ input_parser.add_argument('file', type=FileStorage,
 # https://flask-restplus.readthedocs.io/en/stable/marshalling.html#the-api-model-factory
 text_answer = MAX_API.model('TextAnswer', {
     'question_id': fields.String(required=False, description='Question identifier'),
+    'question': fields.String(required=False, description='Question text.'),
     'answer': fields.String(required=True, description='Text answer to question'),
 })
 
@@ -59,8 +60,9 @@ class ModelPredictAPI(PredictAPI):
         # input_data = input_file.read()
         preds = self.model_wrapper.predict(input_data)
         # Modify this code if the schema is changed
-        label_preds = [{'question_id': p, 'answer': preds[p]} for p in preds]
-        result['predictions'] = label_preds
+        answers = [{'question_id': p, 'question': preds[p][0], 'answer': preds[p][1]}
+                   for p in preds]
+        result['predictions'] = answers
         result['status'] = 'ok'
 
         return result

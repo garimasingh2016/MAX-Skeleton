@@ -28,7 +28,7 @@ def test_swagger():
 
     json = r.json()
     assert 'swagger' in json
-    assert json.get('info') and json.get('info').get('title') == 'Model Asset Exchange Server'
+    assert json.get('info') and json.get('info').get('title') == 'MAX Question/Response Model'
 
 
 def test_metadata():
@@ -39,20 +39,20 @@ def test_metadata():
     assert r.status_code == 200
 
     metadata = r.json()
-    assert metadata['id'] == 'ADD IN MODEL ID'
-    assert metadata['name'] == 'ADD MODEL NAME'
-    assert metadata['description'] == 'ADD MODEL DESCRIPTION'
-    assert metadata['license'] == 'ADD MODEL LICENSE'
+    assert metadata['id'] == 'BERT'
+    assert metadata['name'] == 'Question/Response Model'
+    assert metadata[
+        'description'] == 'Given any body of text about a certain topic, answer questions about that topic.'
+    assert metadata['license'] == 'Apache 2.0'
 
 
 def test_response():
     model_endpoint = 'http://localhost:5000/model/predict'
-    file_path = 'samples/SAMPLE_FILE.jpg'
+    file_path = 'samples/einstein.json'
 
     with open(file_path, 'rb') as file:
-        file_form = {'image': (file_path, file, 'image/jpeg')}
-
-    r = requests.post(url=model_endpoint, files=file_form)
+        file_form = {'file': (file_path, file, 'json')}
+        r = requests.post(url=model_endpoint, files=file_form)
 
     assert r.status_code == 200
     response = r.json()
@@ -60,7 +60,6 @@ def test_response():
     assert response['status'] == 'ok'
 
     # add sanity checks here
-
 
 if __name__ == '__main__':
     pytest.main([__file__])

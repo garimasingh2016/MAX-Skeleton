@@ -22,9 +22,9 @@ RESTPLUS_MASK_SWAGGER = False
 SWAGGER_UI_DOC_EXPANSION = 'none'
 
 # API metadata
-API_TITLE = 'MAX'
-API_DESC = 'An API for serving models'
-API_VERSION = '0.1'
+API_TITLE = 'MAX Question/Response Model'
+API_DESC = 'Given any body of text about a certain topic, answer questions about that topic.'
+API_VERSION = '1.0.0'
 
 # default model
 MODEL_NAME = ''  # this is blank because the filepath does not contain the model name

@@ -31,19 +31,19 @@ logger = logging.getLogger()
 class ModelWrapper(MAXModelWrapper):
 
     MODEL_META_DATA = {
-        'id': 'ID',
-        'name': 'MODEL NAME',
-        'description': 'DESCRIPTION',
-        'type': 'MODEL TYPE',
-        'source': 'MODEL SOURCE',
-        'license': 'LICENSE'
+        'id': 'BERT',
+        'name': 'Question/Response Model',
+        'description': 'Given any body of text about a certain topic, answer questions about that topic.',
+        'type': 'Question and Answer',
+        'source': 'https://github.com/google-research/bert',
+        'license': 'Apache 2.0'
     }
 
     def __init__(self, path=DEFAULT_MODEL_PATH):
         logger.info('Loading model from: {}...'.format(path))
 
         # Parameters for inference
-        self.max_seq_length = 384
+        self.max_seq_length = 512
         self.doc_stride = 128
         self.max_query_length = 64
         self.max_answer_length = 30
@@ -110,45 +110,41 @@ class ModelWrapper(MAXModelWrapper):
 
         for (example_index, example) in enumerate(predict_examples):
             features = example_index_to_features[example_index]
-
-            pred = None
+            prelim_preds = []
             feature = features[0]
             result = unique_id_to_result[feature.unique_id]
-            start_index = self._get_best_index(result.start_logits)
-            end_index = self._get_best_index(result.end_logits)
+            start_indices = self._get_best_indices(result.start_logits, 10)
+            end_indices = self._get_best_indices(result.end_logits, 10)
 
             # We could hypothetically create invalid predictions, e.g., predict
             # that the start of the span is in the question. We throw out all
             # invalid predictions.
-            if start_index >= len(feature.tokens):
-                all_predictions[example.qas_id] = ""
-                continue
-            if end_index >= len(feature.tokens):
-                all_predictions[example.qas_id] = ""
-                continue
-            if start_index not in feature.token_to_orig_map:
-                all_predictions[example.qas_id] = ""
-                continue
-            if end_index not in feature.token_to_orig_map:
-                all_predictions[example.qas_id] = ""
-                continue
-            if not feature.token_is_max_context.get(start_index, False):
-                all_predictions[example.qas_id] = ""
-                continue
-            if end_index < start_index:
-                all_predictions[example.qas_id] = ""
-                continue
-            length = end_index - start_index + 1
-            if length >= self.max_answer_length:
-                all_predictions[example.qas_id] = ""
-                continue
-            # if want to restrict answer length, put that here
-            pred = _PrelimPrediction(
-                feature_index=0,
-                start_index=start_index,
-                end_index=end_index,
-                start_logit=result.start_logits[start_index],
-                end_logit=result.end_logits[end_index])
+            for start_index in start_indices:
+                for end_index in end_indices:
+                    if start_index >= len(feature.tokens):
+                        continue
+                    if end_index >= len(feature.tokens):
+                        continue
+                    if start_index not in feature.token_to_orig_map:
+                        continue
+                    if end_index not in feature.token_to_orig_map:
+                        continue
+                    if not feature.token_is_max_context.get(start_index, False):
+                        continue
+                    if end_index < start_index:
+                        continue
+                    length = end_index - start_index + 1
+                    if length >= self.max_answer_length:
+                        continue
+                    prelim_preds.append(_PrelimPrediction(
+                        feature_index=0,
+                        start_index=start_index,
+                        end_index=end_index,
+                        start_logit=result.start_logits[start_index],
+                        end_logit=result.end_logits[end_index]))
+
+            # use best prediction
+            pred = prelim_preds[0]
 
             final_text = ""
             feature = features[pred.feature_index]
@@ -171,14 +167,21 @@ class ModelWrapper(MAXModelWrapper):
                 orig_text = " ".join(orig_tokens)
                 final_text = self.get_final_text(tok_text, orig_text, True)
 
-            all_predictions[example.qas_id] = final_text
+            all_predictions[example.qas_id] = (example.question_text, final_text)
 
         return all_predictions
 
-    def _get_best_index(self, logits):
+    def _get_best_indices(self, logits, n_best_size):
         """Get the best logits from a list."""
-        index_and_score = sorted(enumerate(logits), key=lambda x: x[1], reverse=True)
-        return index_and_score[0][0]
+        index_and_score = sorted(
+            enumerate(logits), key=lambda x: x[1], reverse=True)
+
+        best_indexes = []
+        for i in range(len(index_and_score)):
+            if i >= n_best_size:
+                break
+            best_indexes.append(index_and_score[i][0])
+        return best_indexes
 
     def get_final_text(self, pred_text, orig_text, do_lower_case):
         """Project the tokenized prediction back to the original text."""

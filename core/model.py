@@ -15,13 +15,15 @@
 #
 
 from maxfw.model import MAXModelWrapper
-
+import collections
 import logging
 from config import DEFAULT_MODEL_PATH
-from core.run_squad import MAXAPIProcessor, read_squad_examples, convert_examples_to_features
-from core.tokenization import FullTokenizer
+from core.run_squad import read_squad_examples, convert_examples_to_features
+from core.tokenization import FullTokenizer, BasicTokenizer
 import tensorflow as tf
-from tensorflow.python.saved_model import tag_constants
+import numpy as np
+from tensorflow.contrib import predictor
+import six
 
 logger = logging.getLogger()
 
@@ -44,15 +46,7 @@ class ModelWrapper(MAXModelWrapper):
         self.max_seq_length = 384
         self.doc_stride = 128
         self.max_query_length = 64
-
-        # Loading the tf Graph
-        self.graph = tf.Graph()
-        self.sess = tf.Session(graph=self.graph)
-        tf.saved_model.loader.load(
-            self.sess, [tag_constants.SERVING], DEFAULT_MODEL_PATH)
-
-        # Initialize the dataprocessor
-        self.processor = MAXAPIProcessor()
+        self.max_answer_length = 30
 
         # Initialize the tokenizer
         self.tokenizer = FullTokenizer(
@@ -68,33 +62,215 @@ class ModelWrapper(MAXModelWrapper):
 
     def _predict(self, x, batch_size=32):
         predict_examples = read_squad_examples(x)
-
-        # Input and output tensors
-        input_ids = self.sess.graph.get_tensor_by_name('input_ids_1:0')
-        input_mask = self.sess.graph.get_tensor_by_name('input_mask_1:0')
-        unique_ids = self.sess.graph.get_tensor_by_name('unique_ids_1:0')
-        segment_ids = self.sess.graph.get_tensor_by_name('segment_ids_1:0')
-        outputs = self.sess.graph.get_tensor_by_name('loss/Softmax:0')
+        predict_fn = predictor.from_saved_model(DEFAULT_MODEL_PATH)
 
         predictions = []
-
+        all_features = []
         for i in range(0, len(predict_examples), batch_size):
-            features = convert_examples_to_features(predict_examples[
-                                                    i:i + batch_size], self.tokenizer, self.max_seq_length, self.doc_stride, self.max_query_length)
-
-            feed_dict = {}
-            feed_dict[input_ids] = []
-            feed_dict[input_mask] = []
-            feed_dict[unique_ids] = []
-            feed_dict[segment_ids] = []
+            features = convert_examples_to_features(predict_examples[i:i + batch_size],
+                                                    self.tokenizer, self.max_seq_length, self.doc_stride, self.max_query_length)
+            all_features.extend(features)
             for feature in features:
-                feed_dict[input_ids].append(feature.input_ids)
-                feed_dict[input_mask].append(feature.input_mask)
-                feed_dict[label_ids].append(feature.label_ids)
-                feed_dict[unique_ids].append(features.unique_ids)
+                result = predict_fn({
+                    "unique_ids": np.array(feature.unique_id).reshape(1),
+                    "input_ids": np.array(feature.input_ids).reshape(-1, self.max_seq_length),
+                    "input_mask": np.array(feature.input_mask).reshape(-1, self.max_seq_length),
+                    "segment_ids": np.array(feature.segment_ids).reshape(-1, self.max_seq_length)
+                })
 
-            result = self.sess.run(outputs, feed_dict=feed_dict)
+                predictions.append(result)
 
-            predictions.append(list(p) for p in result)
+        RawResult = collections.namedtuple("RawResult", ["unique_id", "start_logits", "end_logits"])
 
-        return predictions
+        all_results = []
+        for result in predictions:
+            unique_id = int(result["unique_ids"])
+            start_logits = [float(x) for x in result["start_logits"].flat]
+            end_logits = [float(x) for x in result["end_logits"].flat]
+            all_results.append(
+                RawResult(
+                    unique_id=unique_id,
+                    start_logits=start_logits,
+                    end_logits=end_logits))
+
+        # convert to text predictions
+        example_index_to_features = collections.defaultdict(list)
+        for feature in all_features:
+            example_index_to_features[feature.example_index].append(feature)
+
+        unique_id_to_result = {}
+        for result in all_results:
+            unique_id_to_result[result.unique_id] = result
+
+        _PrelimPrediction = collections.namedtuple(  # pylint: disable=invalid-name
+            "PrelimPrediction",
+            ["feature_index", "start_index", "end_index", "start_logit", "end_logit"])
+
+        all_predictions = collections.OrderedDict()
+
+        for (example_index, example) in enumerate(predict_examples):
+            features = example_index_to_features[example_index]
+
+            pred = None
+            feature = features[0]
+            result = unique_id_to_result[feature.unique_id]
+            start_index = self._get_best_index(result.start_logits)
+            end_index = self._get_best_index(result.end_logits)
+
+            # We could hypothetically create invalid predictions, e.g., predict
+            # that the start of the span is in the question. We throw out all
+            # invalid predictions.
+            if start_index >= len(feature.tokens):
+                all_predictions[example.qas_id] = ""
+                continue
+            if end_index >= len(feature.tokens):
+                all_predictions[example.qas_id] = ""
+                continue
+            if start_index not in feature.token_to_orig_map:
+                all_predictions[example.qas_id] = ""
+                continue
+            if end_index not in feature.token_to_orig_map:
+                all_predictions[example.qas_id] = ""
+                continue
+            if not feature.token_is_max_context.get(start_index, False):
+                all_predictions[example.qas_id] = ""
+                continue
+            if end_index < start_index:
+                all_predictions[example.qas_id] = ""
+                continue
+            length = end_index - start_index + 1
+            if length >= self.max_answer_length:
+                all_predictions[example.qas_id] = ""
+                continue
+            # if want to restrict answer length, put that here
+            pred = _PrelimPrediction(
+                feature_index=0,
+                start_index=start_index,
+                end_index=end_index,
+                start_logit=result.start_logits[start_index],
+                end_logit=result.end_logits[end_index])
+
+            final_text = ""
+            feature = features[pred.feature_index]
+            if pred.start_index > 0:  # this is a non-null prediction
+                tok_tokens = feature.tokens[
+                    pred.start_index:(pred.end_index + 1)]
+                orig_doc_start = feature.token_to_orig_map[pred.start_index]
+                orig_doc_end = feature.token_to_orig_map[pred.end_index]
+                orig_tokens = example.doc_tokens[
+                    orig_doc_start:(orig_doc_end + 1)]
+                tok_text = " ".join(tok_tokens)
+
+                # De-tokenize WordPieces that have been split off.
+                tok_text = tok_text.replace(" ##", "")
+                tok_text = tok_text.replace("##", "")
+
+                # Clean whitespace
+                tok_text = tok_text.strip()
+                tok_text = " ".join(tok_text.split())
+                orig_text = " ".join(orig_tokens)
+                final_text = self.get_final_text(tok_text, orig_text, True)
+
+            all_predictions[example.qas_id] = final_text
+
+        return all_predictions
+
+    def _get_best_index(self, logits):
+        """Get the best logits from a list."""
+        index_and_score = sorted(enumerate(logits), key=lambda x: x[1], reverse=True)
+        return index_and_score[0][0]
+
+    def get_final_text(self, pred_text, orig_text, do_lower_case):
+        """Project the tokenized prediction back to the original text."""
+
+        # When we created the data, we kept track of the alignment between original
+        # (whitespace tokenized) tokens and our WordPiece tokenized tokens. So
+        # now `orig_text` contains the span of our original text corresponding to the
+        # span that we predicted.
+        #
+        # However, `orig_text` may contain extra characters that we don't want in
+        # our prediction.
+        #
+        # For example, let's say:
+        #   pred_text = steve smith
+        #   orig_text = Steve Smith's
+        #
+        # We don't want to return `orig_text` because it contains the extra "'s".
+        #
+        # We don't want to return `pred_text` because it's already been normalized
+        # (the SQuAD eval script also does punctuation stripping/lower casing but
+        # our tokenizer does additional normalization like stripping accent
+        # characters).
+        #
+        # What we really want to return is "Steve Smith".
+        #
+        # Therefore, we have to apply a semi-complicated alignment heruistic between
+        # `pred_text` and `orig_text` to get a character-to-charcter alignment. This
+        # can fail in certain cases in which case we just return `orig_text`.
+
+        def _strip_spaces(text):
+            ns_chars = []
+            ns_to_s_map = collections.OrderedDict()
+            for (i, c) in enumerate(text):
+                if c == " ":
+                    continue
+                ns_to_s_map[len(ns_chars)] = i
+                ns_chars.append(c)
+            ns_text = "".join(ns_chars)
+            return (ns_text, ns_to_s_map)
+
+        # We first tokenize `orig_text`, strip whitespace from the result
+        # and `pred_text`, and check if they are the same length. If they are
+        # NOT the same length, the heuristic has failed. If they are the same
+        # length, we assume the characters are one-to-one aligned.
+        tokenizer = BasicTokenizer(do_lower_case=do_lower_case)
+
+        tok_text = " ".join(tokenizer.tokenize(orig_text))
+
+        start_position = tok_text.find(pred_text)
+        if start_position == -1:
+            if FLAGS.verbose_logging:
+                tf.logging.info(
+                    "Unable to find text: '%s' in '%s'" % (pred_text, orig_text))
+            return orig_text
+        end_position = start_position + len(pred_text) - 1
+
+        (orig_ns_text, orig_ns_to_s_map) = _strip_spaces(orig_text)
+        (tok_ns_text, tok_ns_to_s_map) = _strip_spaces(tok_text)
+
+        if len(orig_ns_text) != len(tok_ns_text):
+            if FLAGS.verbose_logging:
+                tf.logging.info("Length not equal after stripping spaces: '%s' vs '%s'",
+                                orig_ns_text, tok_ns_text)
+            return orig_text
+
+        # We then project the characters in `pred_text` back to `orig_text` using
+        # the character-to-character alignment.
+        tok_s_to_ns_map = {}
+        for (i, tok_index) in six.iteritems(tok_ns_to_s_map):
+            tok_s_to_ns_map[tok_index] = i
+
+        orig_start_position = None
+        if start_position in tok_s_to_ns_map:
+            ns_start_position = tok_s_to_ns_map[start_position]
+            if ns_start_position in orig_ns_to_s_map:
+                orig_start_position = orig_ns_to_s_map[ns_start_position]
+
+        if orig_start_position is None:
+            if FLAGS.verbose_logging:
+                tf.logging.info("Couldn't map start position")
+            return orig_text
+
+        orig_end_position = None
+        if end_position in tok_s_to_ns_map:
+            ns_end_position = tok_s_to_ns_map[end_position]
+            if ns_end_position in orig_ns_to_s_map:
+                orig_end_position = orig_ns_to_s_map[ns_end_position]
+
+        if orig_end_position is None:
+            if FLAGS.verbose_logging:
+                tf.logging.info("Couldn't map end position")
+            return orig_text
+
+        output_text = orig_text[orig_start_position:(orig_end_position + 1)]
+        return output_text

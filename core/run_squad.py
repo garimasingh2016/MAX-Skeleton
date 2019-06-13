@@ -22,9 +22,7 @@ import collections
 import math
 import os
 import random
-# import modeling
-# import optimization
-from core.tokenization import FullTokenizer
+from core.tokenization import FullTokenizer, printable_text
 import six
 import tensorflow as tf
 
@@ -56,9 +54,8 @@ class SquadExample(object):
 
     def __repr__(self):
         s = ""
-        s += "qas_id: %s" % (tokenization.printable_text(self.qas_id))
-        s += ", question_text: %s" % (
-            tokenization.printable_text(self.question_text))
+        s += "qas_id: %s" % (printable_text(self.qas_id))
+        s += ", question_text: %s" % (printable_text(self.question_text))
         s += ", doc_tokens: [%s]" % (" ".join(self.doc_tokens))
         if self.start_position:
             s += ", start_position: %d" % (self.start_position)
@@ -97,69 +94,6 @@ class InputFeatures(object):
         self.start_position = start_position
         self.end_position = end_position
         self.is_impossible = is_impossible
-
-
-class DataProcessor(object):
-    """Base class for data converters for sequence classification data sets."""
-
-    def get_train_examples(self, data_dir):
-        """Gets a collection of `InputExample`s for the train set."""
-        raise NotImplementedError()
-
-    def get_dev_examples(self, data_dir):
-        """Gets a collection of `InputExample`s for the dev set."""
-        raise NotImplementedError()
-
-    def get_test_examples(self, data_dir):
-        """Gets a collection of `InputExample`s for prediction."""
-        raise NotImplementedError()
-
-    def get_labels(self):
-        """Gets the list of labels for this data set."""
-        raise NotImplementedError()
-
-    @classmethod
-    def _read_tsv(cls, input_file, quotechar=None):
-        """Reads a tab separated value file."""
-        with tf.gfile.Open(input_file, "r") as f:
-            reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
-            lines = []
-            for line in reader:
-                lines.append(line)
-            return lines
-
-    @classmethod
-    def _read_csv(cls, input_file, quotechar=None):
-        """Reads a comma separated value file."""
-        with tf.gfile.Open(input_file, "r") as f:
-            reader = csv.reader(f, delimiter=",", quotechar=quotechar)
-            lines = []
-            for line in reader:
-                lines.append(line)
-            return lines
-
-
-class MAXAPIProcessor(DataProcessor):
-    """Custom Data Processor for the MAX API."""
-
-    def get_test_examples(self, test_data):
-        """See base class."""
-
-        # Verify that the input is a list of strings
-        assert type(test_data) == list
-        # Create InputExample objects from the input data
-        return self._create_examples(test_data, "test")
-
-    def _create_examples(self, lines, set_type):
-        """Creates examples for the training and dev sets."""
-        examples = []
-        for (i, line) in enumerate(lines):
-            guid = "%s-%s" % (set_type, i)
-            text_a = tokenization.convert_to_unicode(line)
-            label = self.get_labels()[0]
-            examples.append(
-                InputExample(guid=guid, text_a=text_a, text_b=None, label=label))
-        return examples
 
 
 def read_squad_examples(input_data):
@@ -234,13 +168,6 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 tok_to_orig_index.append(i)
                 all_doc_tokens.append(sub_token)
 
-        tok_start_position = None
-        tok_end_position = None
-        tok_end_position = len(all_doc_tokens) - 1
-        (tok_start_position, tok_end_position) = _improve_answer_span(
-            all_doc_tokens, tok_start_position, tok_end_position, tokenizer,
-            example.orig_answer_text)
-
         # The -3 accounts for [CLS], [SEP] and [SEP]
         max_tokens_for_doc = max_seq_length - len(query_tokens) - 3
 
@@ -311,7 +238,7 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                 tf.logging.info("example_index: %s" % (example_index))
                 tf.logging.info("doc_span_index: %s" % (doc_span_index))
                 tf.logging.info("tokens: %s" % " ".join(
-                    [tokenization.printable_text(x) for x in tokens]))
+                    [printable_text(x) for x in tokens]))
                 tf.logging.info("token_to_orig_map: %s" % " ".join(
                     ["%d:%d" % (x, y) for (x, y) in six.iteritems(token_to_orig_map)]))
                 tf.logging.info("token_is_max_context: %s" % " ".join([
@@ -323,15 +250,6 @@ def convert_examples_to_features(examples, tokenizer, max_seq_length,
                     "input_mask: %s" % " ".join([str(x) for x in input_mask]))
                 tf.logging.info(
                     "segment_ids: %s" % " ".join([str(x) for x in segment_ids]))
-                if is_training and example.is_impossible:
-                    tf.logging.info("impossible example")
-                if is_training and not example.is_impossible:
-                    answer_text = " ".join(
-                        tokens[start_position:(end_position + 1)])
-                    tf.logging.info("start_position: %d" % (start_position))
-                    tf.logging.info("end_position: %d" % (end_position))
-                    tf.logging.info(
-                        "answer: %s" % (tokenization.printable_text(answer_text)))
 
             feature = InputFeatures(
                 unique_id=unique_id,

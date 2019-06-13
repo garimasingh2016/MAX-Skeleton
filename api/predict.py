@@ -32,15 +32,14 @@ input_parser.add_argument('file', type=FileStorage,
 
 # Creating a JSON response model:
 # https://flask-restplus.readthedocs.io/en/stable/marshalling.html#the-api-model-factory
-label_prediction = MAX_API.model('LabelPrediction', {
-    'label_id': fields.String(required=False, description='Label identifier'),
-    'label': fields.String(required=True, description='Class label'),
-    'probability': fields.Float(required=True)
+text_answer = MAX_API.model('TextAnswer', {
+    'question_id': fields.String(required=False, description='Question identifier'),
+    'answer': fields.String(required=True, description='Text answer to question'),
 })
 
 predict_response = MAX_API.model('ModelPredictResponse', {
     'status': fields.String(required=True, description='Response status message'),
-    'predictions': fields.List(fields.Nested(label_prediction), description='Predicted labels and probabilities')
+    'predictions': fields.List(fields.Nested(text_answer), description='Predicted answers to questions')
 })
 
 
@@ -59,10 +58,8 @@ class ModelPredictAPI(PredictAPI):
         input_data = json.load(args['file'])["data"]
         # input_data = input_file.read()
         preds = self.model_wrapper.predict(input_data)
-
         # Modify this code if the schema is changed
-        label_preds = [{'label_id': p[0], 'label': p[1],
-                        'probability': p[2]} for p in [x for x in preds]]
+        label_preds = [{'question_id': p, 'answer': preds[p]} for p in preds]
         result['predictions'] = label_preds
         result['status'] = 'ok'
 

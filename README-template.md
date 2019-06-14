@@ -2,7 +2,7 @@
 
 [<img src="docs/deploy-max-to-ibm-cloud-with-kubernetes-button.png" width="400px">](http://ibm.biz/max-to-ibm-cloud-tutorial)
 
-# IBM Developer Model Asset Exchange: [MODEL NAME]
+# IBM Developer Model Asset Exchange: [Question/Response Model]
 
 This repository contains code to instantiate and deploy a Question/Response model. Given a body of text (context) about a subject and questions about that subject, the model will answer questions based on the given context. The input of this 
 

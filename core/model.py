@@ -144,7 +144,16 @@ class ModelWrapper(MAXModelWrapper):
                         end_logit=result.end_logits[end_index]))
 
             # use best prediction
-            pred = prelim_preds[0]
+            pred = None
+            if len(prelim_preds) == 0:
+                pred = _PrelimPrediction(
+                    feature_index=0,
+                    start_index=0,
+                    end_index=0,
+                    start_logit=0,
+                    end_logit=0)
+            else:
+                pred = prelim_preds[0]
 
             final_text = ""
             feature = features[pred.feature_index]

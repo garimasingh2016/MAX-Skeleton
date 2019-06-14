@@ -48,7 +48,7 @@ def test_metadata():
 
 def test_response():
     model_endpoint = 'http://localhost:5000/model/predict'
-    file_path = 'samples/einstein.json'
+    file_path = 'samples/small-dev.json'
 
     with open(file_path, 'rb') as file:
         file_form = {'file': (file_path, file, 'json')}
@@ -60,6 +60,10 @@ def test_response():
     assert response['status'] == 'ok'
 
     # add sanity checks here
+
+    # make sure answers are nonempty
+    for pred in response["predictions"]:
+        assert pred["answer"] != ""
 
 if __name__ == '__main__':
     pytest.main([__file__])

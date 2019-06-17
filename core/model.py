@@ -118,7 +118,7 @@ class ModelWrapper(MAXModelWrapper):
 
             # We could hypothetically create invalid predictions, e.g., predict
             # that the start of the span is in the question. We throw out all
-            # invalid predictions.
+            # invalid predictions within the 10 best predictions.
             for start_index in start_indices:
                 for end_index in end_indices:
                     if start_index >= len(feature.tokens):

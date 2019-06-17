@@ -2,7 +2,7 @@
 
 [<img src="docs/deploy-max-to-ibm-cloud-with-kubernetes-button.png" width="400px">](http://ibm.biz/max-to-ibm-cloud-tutorial)
 
-# IBM Developer Model Asset Exchange: [Question/Response Model]
+# IBM Developer Model Asset Exchange: Question/Response Model
 
 This repository contains code to instantiate and deploy a Question/Response model. Given a body of text (context) about a subject and questions about that subject, the model will answer questions based on the given context. The input of this 
 
@@ -14,7 +14,7 @@ as part of the [IBM Developer Model Asset Exchange](https://developer.ibm.com/ex
 ## Model Metadata
 | Domain | Application | Industry  | Framework | Training Data | Input Data Format |
 | ------------- | --------  | -------- | --------- | --------- | -------------- | 
-| [Natural Language Processing] | [Question and Answer] | [General] | [TensorFlow] | [SQuAD 1.1](https://rajpurkar.github.io/SQuAD-explorer/) | [Text] |
+| Natural Language Processing | Question and Answer | General | TensorFlow | [SQuAD 1.1](https://rajpurkar.github.io/SQuAD-explorer/) | Text |
 
 _Note: the SQuAD 1.1 files are no longer on the dataset website but can be found on the [Google BERT](https://github.com/google-research/bert) repo_
 
@@ -26,16 +26,16 @@ _Note: The performance of a model is not the only significant metric. The level 
 
 
 
-|  | [SQuAD 1.1] | [DATASET 2]   | [DATASET 3]  |
+|  | SQuAD 1.1 | TriviaQA 1.0 for RC   | MS MARCO  |
 | -------- | --------  | -------- | --------- |
-| [f1 Score] | [88.7] | [VALUE] | [VALUE] |
-| [Exact Match] | [81.3] | [VALUE] | [VALUE] |
+| f1 Score | 88.7 | 3.35 | 23.39 |
+| Exact Match | 81.3 | 0.13 | 0.16 |
 
 ## References
 
 > This section should include links to relevant papers, github repos and dataset home pages. Please follow the standard format for references.
 
-* _[J. Devlin, M. Chang, K. Lee, K. Toutanova]_, ["BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"]([https://arxiv.org/abs/1810.04805]), [arXiv], [2018].
+* _J. Devlin, M. Chang, K. Lee, K. Toutanova_, ["BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding"]([https://arxiv.org/abs/1810.04805]), arXiv, 2018.
 * [Google BERT](https://github.com/google-research/bert)
 * [SQuAD Dataset](https://rajpurkar.github.io/SQuAD-explorer/) and version 1.1 on the [Google BERT](https://github.com/google-research/bert) repo
 
